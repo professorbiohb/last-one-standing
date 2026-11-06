@@ -65,6 +65,12 @@ canvas{position:fixed;inset:0;display:block;cursor:none}
 #chi{font:inherit;font-size:18px;width:min(420px,90vw);padding:10px 16px;border-radius:999px;border:3px solid #ffd23f;background:rgba(20,16,46,.92);color:#fff;outline:none}#emr{display:flex;gap:4px;background:rgba(20,16,46,.92);padding:6px 10px;border-radius:999px;flex-wrap:wrap;justify-content:center}#emr button{font-size:22px;background:none;border:0;cursor:pointer;padding:2px 4px}#emr button:hover{transform:scale(1.3)}
 .bub{position:absolute;bottom:-80px;border-radius:50%;background:rgba(255,255,255,.07);animation:rise linear infinite}@keyframes rise{to{transform:translateY(-130vh)}}
 .hide{display:none!important}
+#onlineStatus{max-width:520px;min-height:24px;color:#ffe08a;font-family:Arial,sans-serif}
+#roomCode{font:inherit;font-size:20px;text-align:center;width:230px;padding:10px 14px;border-radius:999px;border:3px solid rgba(255,255,255,.25);background:rgba(255,255,255,.1);color:#fff}
+#netHud{position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:12;background:#17132ddd;color:#fff;padding:8px 14px;border-radius:14px;font:14px Arial;display:none;max-width:90vw;text-align:center}
+#netChat{position:fixed;right:14px;top:70px;z-index:13;width:min(300px,85vw);background:#17132ddd;color:white;border:1px solid #ffffff55;border-radius:14px;padding:10px;font:13px Arial;display:none}
+#netChatLog{height:150px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;margin-bottom:8px}
+#netChat input{width:68%;padding:8px;border-radius:8px;border:0}#netChat button{padding:8px;border:0;border-radius:8px}
 </style></head><body>
 <canvas id="c"></canvas>
 <div id="ov">
@@ -77,12 +83,14 @@ canvas{position:fixed;inset:0;display:block;cursor:none}
 <section class="scr" id="s-mode"><button class="back" data-go="s-home">← Back</button>
 <h2>Choose a mode</h2>
 <div class="row">
-<button class="card mc" data-m="br"><span class="ic">🪂</span><b>Battle Royale</b><span>Loot chests, outlast 11 bots as the storm closes in.</span></button>
-<button class="card mc" data-m="ffa"><span class="ic">⚔️</span><b>Free For All</b><span>3 minutes, endless respawns. Most kills wins.</span></button>
-<button class="card mc" data-m="practice"><span class="ic">🎯</span><b>Practice</b><span>Peaceful bots that never shoot. Test every weapon.</span></button>
+<button class="card" id="onlineMode"><span class="ic">🌐</span><b>Real People</b><span>Play online with friends. Battle Royale or Free For All.</span></button>
+<button class="card" id="botsMode"><span class="ic">🤖</span><b>Play with Bots</b><span>Practice and offline matches against computer players.</span></button>
 </div>
-<div class="row"><span class="pill">🤖 Bots</span><span class="pill off">🌐 Real people (needs an online server)</span></div>
 </section>
+<section class="scr" id="s-online"><button class="back" data-go="s-mode">← Back</button>
+<h2>Play online</h2><p>Choose a mode, then create a room or enter a friend's room code.</p>
+<div class="row"><button class="card on" id="onlineBR"><span class="ic">🪂</span><b>Battle Royale</b><span>At least 2 players. 5-second countdown. Locks when started.</span></button><button class="card" id="onlineFFA"><span class="ic">⚔️</span><b>Free For All</b><span>Join while the match is running. New players replace bots.</span></button></div>
+<div class="namebox"><input id="roomCode" maxlength="8" placeholder="Room code (blank = create)"><button class="big" id="roomContinue">CONTINUE</button></div><p id="onlineStatus">Choose a mode. Leave the room code blank to create a new room.</p></section>
 <section class="scr" id="s-setup"><button class="back" data-go="s-mode">← Back</button>
 <h2 id="sh">Setup</h2><p id="md"></p>
 <div id="dg"><h3>Bot difficulty</h3><div class="row" id="diffs">
@@ -119,6 +127,8 @@ canvas{position:fixed;inset:0;display:block;cursor:none}
 <div id="vic" class="hide"><div class="rays"></div><canvas id="conf"></canvas><div class="vbox"><canvas id="vpv" width="200" height="230"></canvas><h1 id="vt"></h1><div class="vstats" id="vs"></div><div class="row"><button class="big" id="vagain">PLAY AGAIN</button><button class="rnd" id="vmenu">Menu</button></div></div></div>
 <div id="emw"></div>
 <div id="chb" class="hide"><div id="emr"></div><input id="chi" maxlength="60" placeholder="Say something... (Enter to send)" autocomplete="off"></div>
+<script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
+<div id="netHud"></div><div id="netChat"><b>ROOM CHAT</b><div id="netChatLog"></div><input id="netChatInput" maxlength="120" placeholder="Message..."><button id="netChatSend">Send</button></div>
 <script>
 const cv=document.getElementById('c'),ctx=cv.getContext('2d'),ov=document.getElementById('ov');
 function rs(){cv.width=innerWidth;cv.height=innerHeight}rs();addEventListener('resize',rs);
@@ -145,8 +155,13 @@ function go(id){document.querySelectorAll('.scr').forEach(s=>s.classList.toggle(
 document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>go(b.dataset.go));
 function pick(s,fn){document.querySelectorAll(s+' .opt').forEach(b=>b.onclick=()=>{document.querySelectorAll(s+' .opt').forEach(x=>x.classList.remove('on'));b.classList.add('on');fn(b.dataset)})}
 pick('#diffs',d=>DN=d.d);pick('#wps',d=>WSEL=d.w);
-document.querySelectorAll('.mc').forEach(b=>b.onclick=()=>{MODE=b.dataset.m;document.getElementById('dg').classList.toggle('hide',MODE==='practice');document.getElementById('wg').classList.toggle('hide',MODE==='br');
-document.getElementById('sh').textContent=MN[MODE]+' setup';document.getElementById('md').textContent=MD[MODE];go('s-setup')});
+let ONLINE=false,ONLINE_MODE='br',roomCode='',net=null,netStarted=false,netPlayers={},lastNetSend=0,queuedCharacter='soldier';
+document.getElementById('onlineMode').onclick=()=>{ONLINE=true;go('s-online')};
+document.getElementById('botsMode').onclick=()=>{ONLINE=false;document.getElementById('dg').classList.remove('hide');document.getElementById('wg').classList.toggle('hide',false);go('s-setup')};
+document.getElementById('onlineBR').onclick=()=>{ONLINE_MODE='br';document.getElementById('onlineBR').classList.add('on');document.getElementById('onlineFFA').classList.remove('on')};
+document.getElementById('onlineFFA').onclick=()=>{ONLINE_MODE='ffa';document.getElementById('onlineFFA').classList.add('on');document.getElementById('onlineBR').classList.remove('on')};
+document.getElementById('roomContinue').onclick=()=>{MODE=ONLINE_MODE;document.getElementById('dg').classList.toggle('hide',MODE==='practice');document.getElementById('wg').classList.toggle('hide',MODE==='br');document.getElementById('sh').textContent=MN[MODE]+' setup';document.getElementById('md').textContent=MD[MODE];roomCode=document.getElementById('roomCode').value.trim().toUpperCase();document.getElementById('onlineStatus').textContent='Choose your character next. You will connect when you start.';go('s-setup')};
+
 for(let i=0;i<14;i++){const s=document.createElement('span'),r=(a,b)=>a+Math.random()*(b-a),z=r(30,110);s.className='bub';s.style.cssText='left:'+r(0,100)+'%;width:'+z+'px;height:'+z+'px;animation-duration:'+r(9,20)+'s;animation-delay:-'+r(0,15)+'s';ov.prepend(s)}
 let state='menu',FX=[],chat=[],MODE='br',DN='medium',WSEL='rifle',D,FT=180,U,B,PK,OB,CS,P,t,feed,keys={},mouse={x:0,y:0,down:false},cam={x:0,y:0},last=0;
 const R=(a,b)=>a+Math.random()*(b-a);
@@ -157,15 +172,15 @@ function start(k){
 D=DF[DN];OB=[];for(let i=0;i<120;i++){const w=R(60,170),h=R(60,170),x=R(60,WS-w-60),y=R(60,WS-h-60);if(Math.hypot(x+w/2-WS/2,y+h/2-WS/2)>120)OB.push({x,y,w,h})}
 U=[];B=[];PK=[];feed=[];FX=[];chat=[];t=0;
 const pn=(document.getElementById('pn').value||'').trim().slice(0,12)||'You';P=mk(k,pn,true);U.push(P);
-const ks=Object.keys(CH);for(let i=0;i<(MODE==='practice'?6:11);i++)U.push(mk(ks[i%3],NAMES[i],false));
+const ks=Object.keys(CH);for(let i=0;i<(MODE==='practice'?6:(ONLINE?7:11));i++)U.push(mk(ks[i%3],NAMES[i],false));
 const BRM=MODE==='br';for(let i=0;i<(BRM?26:0);i++){const p=freePt();PK.push({x:p.x,y:p.y,type:'wpn',k:RW[Math.floor(Math.random()*RW.length)],r:Math.random()<.7?0:1})}
 for(let i=0;i<(BRM?40:0);i++){const p=freePt();PK.push({x:p.x,y:p.y,type:'shield'})}
 for(let i=0;i<(BRM?30:0);i++){const p=freePt();PK.push({x:p.x,y:p.y,type:'med'})}
 CS=[];for(let i=0;i<(BRM?40:0);i++){const p=freePt();CS.push({x:p.x,y:p.y,open:false})}
 if(!BRM)for(const u of U){u.w=u.isP?WSEL:RW[Math.floor(Math.random()*RW.length)];u.rar=2}
 state='play';ov.classList.add('hide');go('s-home');last=performance.now();requestAnimationFrame(loop)}
-document.querySelectorAll('.ch').forEach(b=>b.onclick=()=>start(b.dataset.k));
-function fire(u,a,tx,ty){const w=WP[u.w];if(u.cd>0)return;u.cd=w.rate;const sp=u.aim?w.ads:w.spread;
+document.querySelectorAll('.ch').forEach(b=>b.onclick=()=>{if(ONLINE){queuedCharacter=b.dataset.k;joinOnline();}else start(b.dataset.k)});
+function fire(u,a,tx,ty){const w=WP[u.w];if(u.cd>0)return;u.cd=w.rate;if(ONLINE&&net&&net.connected&&u.isP)net.emit('playerShot',{a,tx,ty,w:u.w,rar:u.rar});const sp=u.aim?w.ads:w.spread;
 if(w.melee){const m=u.tsw>0&&u.w==='katana'?TS:w.melee;if(m===TS)u.cd=.3;u.sw=.2;for(const o of U){if(o===u||o.dead)continue;const dx=o.x-u.x,dy=o.y-u.y,d=Math.hypot(dx,dy)-o.r;if(d>m.range)continue;let da=Math.abs(Math.atan2(dy,dx)-a);da=Math.min(da,6.283-da);if(da<m.arc/2||d<8)hurt(o,m.dmg,u)}return}
 for(let i=0;i<w.pel;i++){const b=a+(Math.random()-.5)*sp;B.push({x:u.x+Math.cos(a)*(u.r+8),y:u.y+Math.sin(a)*(u.r+8),vx:Math.cos(b)*w.speed,vy:Math.sin(b)*w.speed,dmg:w.exp?0:w.dmg*RM[u.rar]*(u.isP?1:D.dm),exp:w.exp,lob:w.lob,edmg:w.dmg*RM[u.rar]*(u.isP?1:D.dm),life:w.exp?Math.min(1.6,Math.max(.12,(Math.hypot((tx??u.x+Math.cos(a)*500)-u.x,(ty??u.y+Math.sin(a)*500)-u.y)-30)/w.speed)):w.life,o:u,col:u.rar?RC[u.rar]:w.col})}}
 function push(u,o){const cx=Math.max(o.x,Math.min(u.x,o.x+o.w)),cy=Math.max(o.y,Math.min(u.y,o.y+o.h));let dx=u.x-cx,dy=u.y-cy,d=Math.hypot(dx,dy);if(d<u.r){if(d===0){dx=1;dy=0;d=1}u.x=cx+dx/d*u.r;u.y=cy+dy/d*u.r}}
@@ -190,7 +205,7 @@ const RP=['gg','lol','nice shot','come at me','nooo','lucky','ez','mb','wait wha
 function openChat(){document.getElementById('chb').classList.remove('hide');document.getElementById('chi').focus()}
 function closeChat(){const i=document.getElementById('chi');i.value='';i.blur();document.getElementById('chb').classList.add('hide')}
 function addChat(u,s){chat.push({n:u.name,s,t:10});u.say=s;u.sayt=4}
-function sendChat(){const i=document.getElementById('chi'),s=i.value.trim().slice(0,60);if(s&&state==='play'){addChat(P,s);if(Math.random()<.7)setTimeout(()=>{const b=U.filter(u=>!u.isP&&!u.dead);if(b.length&&state==='play')addChat(b[Math.floor(Math.random()*b.length)],RP[Math.floor(Math.random()*RP.length)])},700+Math.random()*1500)}closeChat()}
+function sendChat(){const i=document.getElementById('chi'),s=i.value.trim().slice(0,60);if(s&&state==='play'){addChat(P,s);if(ONLINE&&net&&net.connected)net.emit('chat',s);if(!ONLINE&&Math.random()<.7)setTimeout(()=>{const b=U.filter(u=>!u.isP&&!u.dead);if(b.length&&state==='play')addChat(b[Math.floor(Math.random()*b.length)],RP[Math.floor(Math.random()*RP.length)])},700+Math.random()*1500)}closeChat()}
 (()=>{const r=document.getElementById('emr');r.innerHTML=['😂','😭','😎','🔥','💀','❤️','👍','😡','🥶','🤡','🙏','🎉'].map(e=>'<button>'+e+'</button>').join('');r.querySelectorAll('button').forEach(b=>b.onclick=()=>{const i=document.getElementById('chi');i.value+=b.textContent;i.focus()})})();
 let CF=0;
 function startConf(){const c=document.getElementById('conf');c.width=innerWidth;c.height=innerHeight;const g=c.getContext('2d'),cols=['#ffd23f','#ff4d6d','#4cc9f0','#52d35f','#b45cff','#fff'],ps=Array.from({length:180},()=>({x:Math.random()*c.width,y:-Math.random()*c.height,w:6+Math.random()*8,h:10+Math.random()*10,vy:2+Math.random()*4,vx:Math.random()*2-1,r:Math.random()*6,vr:Math.random()*.3-.15,c:cols[Math.floor(Math.random()*cols.length)]}));
@@ -209,7 +224,7 @@ if(MODE!=='br'){u.resp=2.5;return}
 if(u.w!=='pistol')PK.push({x:u.x,y:u.y,type:'wpn',k:u.w,r:u.rar});PK.push({x:u.x+14,y:u.y+10,type:'shield'});
 const alive=U.filter(x=>!x.dead).length;
 if(u.isP)end(false,alive+1);else if(alive===1&&!P.dead)end(true,1)}}
-function end(win,place){state='over';if(win){setTimeout(showVictory,900);return}setTimeout(()=>{document.getElementById('t').textContent=win?'Victory Royale!':'Eliminated';
+function end(win,place){if(ONLINE&&win&&net&&net.connected)net.emit('endMatch',{winner:P.name,place});state='over';if(win){setTimeout(showVictory,900);return}setTimeout(()=>{document.getElementById('t').textContent=win?'Victory Royale!':'Eliminated';
 document.getElementById('m').innerHTML=win?'You’re the last one standing. Pick a character to go again.':'You placed #'+place+' of 12. Pick a character to try again.';ov.classList.remove('hide')},900)}
 function respawn(u){const p=freePt();u.x=p.x;u.y=p.y;u.hp=u.max;u.sh=CH[u.k].sh;u.dead=false;u.cd=0;if(!u.isP)u.w=RW[Math.floor(Math.random()*RW.length)]}
 function fmt(s){return Math.floor(s/60)+':'+String(Math.floor(s%60)).padStart(2,'0')}
@@ -227,7 +242,7 @@ for(let i=PK.length-1;i>=0;i--){const p=PK[i];if(Math.hypot(p.x-u.x,p.y-u.y)>u.r
 if(p.type==='shield'&&u.sh<100){u.sh=Math.min(100,u.sh+50);PK.splice(i,1)}
 else if(p.type==='med'&&u.hp<u.max){u.hp=Math.min(u.max,u.hp+35);PK.splice(i,1)}
 else if(p.type==='wpn'&&!u.isP&&!WP[p.k].melee&&(u.w==='pistol'||p.r>u.rar)){u.w=p.k;u.rar=p.r;PK.splice(i,1)}}
-if(u.isP)continue;
+if(u.isP||u.isRemote)continue;
 u.think-=dt;if(u.think<=0){u.think=R(.4,1)*D.th;let best=null,bd=D.see;
 for(const o of U){if(o===u||o.dead)continue;const d=Math.hypot(o.x-u.x,o.y-u.y);if(d<bd){bd=d;best=o}}
 u.tgt=MODE==='practice'?null:best;u.aim=!!u.tgt&&Math.random()<D.aim;if(Math.random()<.3)u.sd*=-1;
@@ -252,6 +267,7 @@ dead=OB.some(o=>b.x>o.x&&b.x<o.x+o.w&&b.y>o.y&&b.y<o.y+o.h);
 if(!dead)for(const u of U){if(u===b.o||u.dead)continue;if(Math.hypot(u.x-b.x,u.y-b.y)<u.r+(b.o.isP?5:2)){hurt(u,b.dmg,b.o);dead=true;break}}}
 if(b.life<=0)dead=true;
 if(dead){if(b.exp)boom(b);B.splice(i,1)}}
+if(ONLINE&&net&&net.connected&&state==='play'){const now=performance.now();if(now-lastNetSend>50){lastNetSend=now;net.emit('playerState',{x:P.x,y:P.y,hp:P.hp,sh:P.sh,dead:P.dead,ang:P.ang,w:P.w,rar:P.rar,kills:P.kills,character:P.k,name:P.name,sk:P.sk});}}
 feed.forEach(f=>f.t-=dt);feed=feed.filter(f=>f.t>0);FX.forEach(e=>e.t+=dt);FX=FX.filter(e=>e.t<.45);chat.forEach(c=>c.t-=dt);chat=chat.filter(c=>c.t>0)}
 function gun(k){const g=ctx;
 if(k==='pistol'){g.fillStyle='#222';g.fillRect(14,-2.5,13,5);return 27}
@@ -406,4 +422,32 @@ cv.addEventListener('mousemove',e=>{mouse.x=e.clientX;mouse.y=e.clientY});
 cv.addEventListener('mousedown',e=>{mouse.x=e.clientX;mouse.y=e.clientY;if(e.button===2)mouse.aim=true;else mouse.down=true});
 addEventListener('mouseup',e=>{if(e.button===2)mouse.aim=false;else mouse.down=false});
 cv.addEventListener('contextmenu',e=>e.preventDefault());
+
+// ---- Online multiplayer bridge ----
+function netNotice(s){const h=document.getElementById('netHud');h.textContent=s;h.style.display='block';if(!ONLINE) setTimeout(()=>h.style.display='none',3500)}
+function appendNetChat(name,msg){const log=document.getElementById('netChatLog');log.textContent+=(log.textContent?'\n':'')+name+': '+msg;log.scrollTop=log.scrollHeight;}
+function joinOnline(){
+ if(typeof io!=='function'){alert('Could not load the multiplayer client. Refresh the page and try again.');return;}
+ if(net){net.disconnect();net=null;}net=io({transports:['websocket','polling']});netStarted=false;netPlayers={};
+ net.on('connect',()=>{const name=(document.getElementById('pn').value||'Player').trim().slice(0,12)||'Player';net.emit('joinRoom',{code:roomCode,mode:MODE,name,character:queuedCharacter});netNotice('Connecting to room...')});
+ net.on('connect_error',e=>netNotice('Connection error: '+e.message));
+ net.on('roomJoined',d=>{roomCode=d.code;document.getElementById('netChat').style.display='block';document.getElementById('netChatLog').textContent='';netNotice('Room '+d.code+' · '+d.players.length+' player(s)');appendNetChat('SYSTEM','Room code: '+d.code+' — share it with friends.');});
+ net.on('lobby',d=>{netNotice(d.message||('Room '+d.code+' · '+d.players.length+' players'));});
+ net.on('countdown',d=>netNotice('Battle Royale starts in '+d.seconds+' seconds · '+d.players+' players'));
+ net.on('roomError',d=>{netNotice(d.message);alert(d.message);});
+ net.on('matchStart',d=>{if(netStarted)return;netStarted=true;MODE=d.mode;start(queuedCharacter);for(const pl of (d.players||[])){if(pl.id!==net.id&&!U.some(x=>x.netId===pl.id))addRemote(pl);}document.getElementById('netHud').textContent='ROOM '+d.code+' · '+(MODE==='br'?'BATTLE ROYALE':'FREE FOR ALL')+' · '+d.players.length+' real players';document.getElementById('netHud').style.display='block';document.getElementById('netChat').style.display='block';});
+ net.on('playerJoined',p=>{if(!netStarted)return;addRemote(p);netNotice(p.name+' joined · a bot was replaced');});
+ net.on('playerLeft',d=>{const u=U&&U.find(x=>x.netId===d.id);if(u)u.dead=true;netNotice(d.name+' left the match');});
+ net.on('state',list=>{if(!netStarted)return;for(const s of list){if(s.id===net.id)continue;let u=U.find(x=>x.netId===s.id);if(!u)u=addRemote(s);if(!u)continue;u.x=s.x;u.y=s.y;u.hp=s.hp;u.sh=s.sh;u.dead=s.dead;u.ang=s.ang;u.w=s.w||u.w;u.rar=s.rar||0;u.kills=s.kills||0;u.name=s.name||u.name;}});
+ net.on('playerShot',s=>{if(!netStarted||!U)return;const u=U.find(x=>x.netId===s.id);if(u&&!u.dead){u.w=s.w||u.w;u.rar=s.rar||0;u.cd=0;fire(u,s.a,s.tx,s.ty);}});
+ net.on('chat',m=>appendNetChat(m.name,m.message));
+ net.on('announcement',m=>{netNotice(m.text);appendNetChat('ANNOUNCEMENT',m.text);});
+ net.on('matchEnded',m=>{netNotice(m.text);appendNetChat('ANNOUNCEMENT',m.text);});
+ net.on('disconnect',()=>{if(ONLINE)netNotice('Disconnected from multiplayer server');});
+}
+function addRemote(s){if(!U||!OB)return null;const c=CH[s.character]||CH.soldier;const u={x:s.x||WS/2,y:s.y||WS/2,r:18,k:s.character||'soldier',sk:s.sk||rndSkin(),col:(s.sk&&s.sk.col)||c.col,hp:s.hp??c.hp,max:c.hp,sh:s.sh||0,spd:c.spd,w:s.w||'pistol',rar:s.rar||0,aim:false,kills:s.kills||0,resp:0,cd:0,ang:s.ang||0,flash:0,name:s.name||'Player',isP:false,isRemote:true,netId:s.id,dead:!!s.dead};
+ // Replace one living bot first so the arena stays capped.
+ const bot=U.find(x=>!x.isP&&!x.isRemote&&!x.dead);if(bot){const ix=U.indexOf(bot);U[ix]=u;}else if(U.length<12)U.push(u);return u;}
+document.getElementById('netChatSend').onclick=()=>{const i=document.getElementById('netChatInput'),s=i.value.trim();if(s&&net&&net.connected){net.emit('chat',s);i.value='';}};
+document.getElementById('netChatInput').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('netChatSend').click()});
 </script></body></html>
