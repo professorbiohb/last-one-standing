@@ -66,7 +66,7 @@ canvas{position:fixed;inset:0;display:block;cursor:none}
 .bub{position:absolute;bottom:-80px;border-radius:50%;background:rgba(255,255,255,.07);animation:rise linear infinite}@keyframes rise{to{transform:translateY(-130vh)}}
 .hide{display:none!important}
 #onlineStatus{max-width:520px;min-height:24px;color:#ffe08a;font-family:Arial,sans-serif}
-#roomCode{font:inherit;font-size:20px;text-align:center;width:230px;padding:10px 14px;border-radius:999px;border:3px solid rgba(255,255,255,.25);background:rgba(255,255,255,.1);color:#fff}
+
 #netHud{position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:12;background:#17132ddd;color:#fff;padding:8px 14px;border-radius:14px;font:14px Arial;display:none;max-width:90vw;text-align:center}
 #netChat{position:fixed;right:14px;top:70px;z-index:13;width:min(300px,85vw);background:#17132ddd;color:white;border:1px solid #ffffff55;border-radius:14px;padding:10px;font:13px Arial;display:none}
 #netChatLog{height:150px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;margin-bottom:8px}
@@ -88,9 +88,9 @@ canvas{position:fixed;inset:0;display:block;cursor:none}
 </div>
 </section>
 <section class="scr" id="s-online"><button class="back" data-go="s-mode">← Back</button>
-<h2>Play online</h2><p>Choose a mode, then create a room or enter a friend's room code.</p>
+<h2>Play online</h2><p>One global lobby. Choose a mode and join the match!</p>
 <div class="row"><button class="card on" id="onlineBR"><span class="ic">🪂</span><b>Battle Royale</b><span>At least 2 players. 5-second countdown. Locks when started.</span></button><button class="card" id="onlineFFA"><span class="ic">⚔️</span><b>Free For All</b><span>Join while the match is running. New players replace bots.</span></button></div>
-<div class="namebox"><input id="roomCode" maxlength="8" placeholder="Room code (blank = create)"><button class="big" id="roomContinue">CONTINUE</button></div><p id="onlineStatus">Choose a mode. Leave the room code blank to create a new room.</p></section>
+<div class="namebox"><button class="big" id="roomContinue">JOIN GLOBAL LOBBY</button></div><p id="onlineStatus">Choose a mode, then join the global lobby.</p></section>
 <section class="scr" id="s-setup"><button class="back" data-go="s-mode">← Back</button>
 <h2 id="sh">Setup</h2><p id="md"></p>
 <div id="dg"><h3>Bot difficulty</h3><div class="row" id="diffs">
@@ -155,12 +155,12 @@ function go(id){document.querySelectorAll('.scr').forEach(s=>s.classList.toggle(
 document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>go(b.dataset.go));
 function pick(s,fn){document.querySelectorAll(s+' .opt').forEach(b=>b.onclick=()=>{document.querySelectorAll(s+' .opt').forEach(x=>x.classList.remove('on'));b.classList.add('on');fn(b.dataset)})}
 pick('#diffs',d=>DN=d.d);pick('#wps',d=>WSEL=d.w);
-let ONLINE=false,ONLINE_MODE='br',roomCode='',net=null,netStarted=false,netPlayers={},lastNetSend=0,queuedCharacter='soldier';
+let ONLINE=false,ONLINE_MODE='br',net=null,netStarted=false,netPlayers={},lastNetSend=0,queuedCharacter='soldier';
 document.getElementById('onlineMode').onclick=()=>{ONLINE=true;go('s-online')};
 document.getElementById('botsMode').onclick=()=>{ONLINE=false;document.getElementById('dg').classList.remove('hide');document.getElementById('wg').classList.toggle('hide',false);go('s-setup')};
 document.getElementById('onlineBR').onclick=()=>{ONLINE_MODE='br';document.getElementById('onlineBR').classList.add('on');document.getElementById('onlineFFA').classList.remove('on')};
 document.getElementById('onlineFFA').onclick=()=>{ONLINE_MODE='ffa';document.getElementById('onlineFFA').classList.add('on');document.getElementById('onlineBR').classList.remove('on')};
-document.getElementById('roomContinue').onclick=()=>{MODE=ONLINE_MODE;document.getElementById('dg').classList.toggle('hide',MODE==='practice');document.getElementById('wg').classList.toggle('hide',MODE==='br');document.getElementById('sh').textContent=MN[MODE]+' setup';document.getElementById('md').textContent=MD[MODE];roomCode=document.getElementById('roomCode').value.trim().toUpperCase();document.getElementById('onlineStatus').textContent='Choose your character next. You will connect when you start.';go('s-setup')};
+document.getElementById('roomContinue').onclick=()=>{MODE=ONLINE_MODE;document.getElementById('dg').classList.toggle('hide',MODE==='practice');document.getElementById('wg').classList.toggle('hide',MODE==='br');document.getElementById('sh').textContent=MN[MODE]+' setup';document.getElementById('md').textContent=MD[MODE];document.getElementById('onlineStatus').textContent='Choose your character next. You will connect when you start.';go('s-setup')};
 
 for(let i=0;i<14;i++){const s=document.createElement('span'),r=(a,b)=>a+Math.random()*(b-a),z=r(30,110);s.className='bub';s.style.cssText='left:'+r(0,100)+'%;width:'+z+'px;height:'+z+'px;animation-duration:'+r(9,20)+'s;animation-delay:-'+r(0,15)+'s';ov.prepend(s)}
 let state='menu',FX=[],chat=[],MODE='br',DN='medium',WSEL='rifle',D,FT=180,U,B,PK,OB,CS,P,t,feed,keys={},mouse={x:0,y:0,down:false},cam={x:0,y:0},last=0;
@@ -427,15 +427,15 @@ cv.addEventListener('contextmenu',e=>e.preventDefault());
 function netNotice(s){const h=document.getElementById('netHud');h.textContent=s;h.style.display='block';if(!ONLINE) setTimeout(()=>h.style.display='none',3500)}
 function appendNetChat(name,msg){const log=document.getElementById('netChatLog');log.textContent+=(log.textContent?'\n':'')+name+': '+msg;log.scrollTop=log.scrollHeight;}
 function joinOnline(){
- if(typeof io!=='function'){alert('Could not load the multiplayer client. Refresh the page and try again.');return;}
- if(net){net.disconnect();net=null;}net=io({transports:['websocket','polling']});netStarted=false;netPlayers={};
- net.on('connect',()=>{const name=(document.getElementById('pn').value||'Player').trim().slice(0,12)||'Player';net.emit('joinRoom',{code:roomCode,mode:MODE,name,character:queuedCharacter});netNotice('Connecting to room...')});
- net.on('connect_error',e=>netNotice('Connection error: '+e.message));
- net.on('roomJoined',d=>{roomCode=d.code;document.getElementById('netChat').style.display='block';document.getElementById('netChatLog').textContent='';netNotice('Room '+d.code+' · '+d.players.length+' player(s)');appendNetChat('SYSTEM','Room code: '+d.code+' — share it with friends.');});
- net.on('lobby',d=>{netNotice(d.message||('Room '+d.code+' · '+d.players.length+' players'));});
+ if(typeof io!=='function'){netNotice('Multiplayer client failed to load. Check your internet connection and refresh.');return;}
+ if(net){net.disconnect();net=null;}net=io({transports:['polling','websocket'],timeout:15000,reconnection:true,reconnectionAttempts:8});netStarted=false;netPlayers={};
+ net.on('connect',()=>{const name=(document.getElementById('pn').value||'Player').trim().slice(0,12)||'Player';net.emit('joinLobby',{mode:MODE,name,character:queuedCharacter});netNotice('Connecting to the global lobby...')});
+ net.on('connect_error',e=>netNotice('Server connection failed. Open the Web Service URL (not the old Static Site URL). '+e.message));
+ net.on('roomJoined',d=>{document.getElementById('netChat').style.display='block';document.getElementById('netChatLog').textContent='';netNotice('Global lobby · '+d.players.length+' player(s)');appendNetChat('SYSTEM','You joined the global lobby.');});
+ net.on('lobby',d=>{netNotice(d.message||('Global lobby · '+d.players.length+' players'));});
  net.on('countdown',d=>netNotice('Battle Royale starts in '+d.seconds+' seconds · '+d.players+' players'));
  net.on('roomError',d=>{netNotice(d.message);alert(d.message);});
- net.on('matchStart',d=>{if(netStarted)return;netStarted=true;MODE=d.mode;start(queuedCharacter);for(const pl of (d.players||[])){if(pl.id!==net.id&&!U.some(x=>x.netId===pl.id))addRemote(pl);}document.getElementById('netHud').textContent='ROOM '+d.code+' · '+(MODE==='br'?'BATTLE ROYALE':'FREE FOR ALL')+' · '+d.players.length+' real players';document.getElementById('netHud').style.display='block';document.getElementById('netChat').style.display='block';});
+ net.on('matchStart',d=>{if(netStarted)return;netStarted=true;MODE=d.mode;start(queuedCharacter);for(const pl of (d.players||[])){if(pl.id!==net.id&&!U.some(x=>x.netId===pl.id))addRemote(pl);}document.getElementById('netHud').textContent='GLOBAL LOBBY · '+(MODE==='br'?'BATTLE ROYALE':'FREE FOR ALL')+' · '+d.players.length+' real players';document.getElementById('netHud').style.display='block';document.getElementById('netChat').style.display='block';});
  net.on('playerJoined',p=>{if(!netStarted)return;addRemote(p);netNotice(p.name+' joined · a bot was replaced');});
  net.on('playerLeft',d=>{const u=U&&U.find(x=>x.netId===d.id);if(u)u.dead=true;netNotice(d.name+' left the match');});
  net.on('state',list=>{if(!netStarted)return;for(const s of list){if(s.id===net.id)continue;let u=U.find(x=>x.netId===s.id);if(!u)u=addRemote(s);if(!u)continue;u.x=s.x;u.y=s.y;u.hp=s.hp;u.sh=s.sh;u.dead=s.dead;u.ang=s.ang;u.w=s.w||u.w;u.rar=s.rar||0;u.kills=s.kills||0;u.name=s.name||u.name;}});
@@ -443,7 +443,7 @@ function joinOnline(){
  net.on('chat',m=>appendNetChat(m.name,m.message));
  net.on('announcement',m=>{netNotice(m.text);appendNetChat('ANNOUNCEMENT',m.text);});
  net.on('matchEnded',m=>{netNotice(m.text);appendNetChat('ANNOUNCEMENT',m.text);});
- net.on('disconnect',()=>{if(ONLINE)netNotice('Disconnected from multiplayer server');});
+ net.on('disconnect',()=>{if(ONLINE)netNotice('Disconnected from multiplayer server. Reconnecting...');});
 }
 function addRemote(s){if(!U||!OB)return null;const c=CH[s.character]||CH.soldier;const u={x:s.x||WS/2,y:s.y||WS/2,r:18,k:s.character||'soldier',sk:s.sk||rndSkin(),col:(s.sk&&s.sk.col)||c.col,hp:s.hp??c.hp,max:c.hp,sh:s.sh||0,spd:c.spd,w:s.w||'pistol',rar:s.rar||0,aim:false,kills:s.kills||0,resp:0,cd:0,ang:s.ang||0,flash:0,name:s.name||'Player',isP:false,isRemote:true,netId:s.id,dead:!!s.dead};
  // Replace one living bot first so the arena stays capped.
